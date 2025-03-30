@@ -1,0 +1,839 @@
+---
+title: "Project2"
+author: "Mugambi"
+date: "2025-02-27"
+output:
+  pdf_document: default
+  html_document: default
+---
+## provide recommendations to GVSU’s K-12 Connect on the impacts of school choice and family engagement in school activities and homework. 
+
+### Tasks
+**1.Factors impacting K-12 education**
+
+**2. Need to determine the “best” model to provide recommendations to GVSU’s K-12 Connect on the impacts of school choice and family engagement in school activities and homework.**
+
+This is a more broad research topic (you are deciding on the response and explanatory variables). The only requirement is that you use the indicated modeling techniques 
+```{r setup, include=FALSE}
+library(ggformula)
+library(tidyverse)
+library(tidymodels)
+library(readxl)
+library(mosaic)
+library(GGally)
+library(caret)
+library(olsrr)
+library(nnet)
+library(MASS)
+library(car)
+
+```
+
+```{r}
+pfi_2019 <- read_excel("pfi-data.xlsx", sheet="curated 2019")
+pfi_2016 <- read_excel("pfi-data.xlsx", sheet="curated 2016")
+
+head(pfi_2019)
+```
+We continuosly have missing values for **School Type Indicators** this will limit our analysis and potentially our model perfomance. We will try to use the `pfi_2019` dataset to check for consistencies in the variables
+
+**1.School factors **
+`SCPUBPRI` - Type of school (public or private), `SCHRTSCHL` - Charter school status, `S1STCHOI` - Whether this was the family’s first-choice school, `SNEIGHBRX` - Moved to attend this school
+
+**2. Family Engagement Factors **
+`FSMTNG` - Attended a school meeting, `FSPTMTNG` - Attended a parent-teacher organization meeting, `FSATCNFN` - Attended parent-teacher conference, `FHHOME` - Time spent on homework, `FHWKHRS` - Hours spent doing homework weekly, `FHCHECKX` - How often parents check for homework completion, `FHHELP` - Days per week parents help with homework
+
+**3. Student Outcome Factors **
+`SEGRADES` - Child’s grades, `SEABSNT` - Days absent from school, `SESCHWRK` - Times contacted about problems with schoolwork, `SEGWORK` - Times contacted for very good schoolwork, `FCSCHOOL` - Parent’s satisfaction with the school, `FCTEACHR` - Parent’s satisfaction with teachers, `FCSTDS` - Satisfaction with academic standards
+
+**Potential Response Variables **
+`GRADE` - Child’s grade level, `SEREPEAT` - Whether the child repeated a grade, `SEFUTUREX` - Expectations for the child’s future education
+
+```{r}
+#Creating a new dataframe
+new_cols <- c("SCPUBPRI", "SCHRTSCHL", "S1STCHOI", "SNEIGHBRX", "FSMTNG", "FSPTMTNG",
+           "FSATCNFN", "FHHOME", "FHWKHRS", "FHCHECKX", "FHHELP", "SEGRADES",
+              "SEABSNT", "SESCHWRK", "SEGWORK", "FCSCHOOL", "FCTEACHR", "FCSTDS",
+              "GRADE", "SEREPEAT", "SEFUTUREX")
+org_cols <- colnames(pfi_2016)
+# Check if there are missing columns
+mis_cols <- setdiff(new_cols, org_cols)
+# Present columns
+pres_cols <- intersect(new_cols, org_cols)
+
+if (length(mis_cols) == 0){
+  message("All columns are present in the data set")
+}else {
+  message("the following columns are missing:\n", paste(mis_cols, collapse = "\n"))
+}
+fin_cols <- tibble(col_name = pres_cols)
+print(fin_cols)
+```
+
+Identifying the key factors **1. School Choice **(`EDCPUB`- public school, `EDCCAT` - private catholic , `EDCREL`- private religious not catholic, `EDCPRI` private not religious,`EDCHSFL` - homeschooled, `SCHRTSCHL` - charter school, `DISTASSI` - District assigned school, `SCHLMAGNET` - magnet school, `SCCHOICE` - choice in school attendance)
+**2. Family Factors ** (`FSSPORTX` – Attended a school event, `FSVOL` – Served as a volunteer, `FSMTNG` – Attended a school meeting, `FSPTMTNG` – Attended a parent-teacher organization meeting, `FSATCNFN` – Attended a parent-teacher conference, `FSFUNDRS` – Participated in fundraising, `FSCOMMTE` – Served on a school committee, `FSCOUNSLR` – Met with a guidance counselor, `FSFREQ` – Frequency of participation in school meetings, `FSSPHW` – School provides information on homework help, `FHCHECKX` – Check for homework completion `FHHELP` – Days helping with homework)
+**3. Academic Perfomance Factors** (`SEGRADES` – Child’s grades, `SEADPLCXX` – Advanced placement enrollment, `SESCHWRK` – Times contacted about problems with schoolwork, `SEGWORK` – Times contacted about very good schoolwork, `SEABSNT` – Days absent, `SEREPEAT` – Whether grades were repeated, `SEENJOY` – Child’s enjoyment of school)
+**4. Demographic Factors ** (`ALLGRADEX` – Current grade level, `CLSSIZE` – Number of students in class, `FCSCHOOL` – Satisfaction with the school, `FCTEACHR` – Satisfaction with teachers, `FCSTDS` – Satisfaction with academic standards, `FCORDER` – Satisfaction with discipline, `FCSUPPRT` – Satisfaction with school staff/parent interaction)
+
+```{r col-present}
+cols <- tibble(col_name = colnames(pfi_2019))
+print(cols)
+
+```
+```{r}
+# Checking if all the columns are present in the dataset
+new_cols <- c("BASMID", "EDCPUB", "EDCCAT", "EDCREL", "SCHRTSCHL", "DISTASSI",
+           "SCHLMAGNET", "SCCHOICE", "FSSPORTX", "FSVOL", "FSMTNG", "FSPTMTNG",
+              "FSATCNFN", "FSFUNDRS", "FSCOMMTE", "FSCOUNSLR", "FSFREQ", "FSSPHW",
+              "FHCHECKX", "FHHELP", "SEGRADES", "SEADPLCXX", "SESCHWRK", "SEGWORK",
+              "SEABSNT", "SEREPEAT", "SEENJOY", "ALLGRADEX", "CLSSIZE", "FCSCHOOL",
+              "FCTEACHR", "FCSTDS", "FCORDER", "FCSUPPRT")
+org_cols <- colnames(pfi_2019)
+# Check if there are missing columns
+mis_cols <- setdiff(new_cols, org_cols)
+# Present columns
+pres_cols <- intersect(new_cols, org_cols)
+
+if (length(mis_cols) == 0){
+  message("All columns are present in the data set")
+}else {
+  message("the following columns are missing:\n", paste(mis_cols, collapse = "\n"))
+}
+fin_cols <- tibble(col_name = pres_cols)
+print(fin_cols)
+```
+Columns specified in the codebook but are missing in the dataset `EDCCAT` - private catholic, `EDCREL`- private religious not catholic,
+`SCHRTSCHL`- charter school, `DISTASSI`- District assigned school, `SCHLMAGNET` - magnet school, `FSSPHW` – School provides information on homework help,`SEADPLCXX` – Advanced placement enrollment,`SESCHWRK` – Times contacted about problems with schoolwork, `SEGWORK` – Times contacted about very good schoolwork,`SEREPEAT` – Whether grades were repeated, `CLSSIZE` – Number of students in class.
+We need to investigate and now whether we can work with the values present.
+
+`SCCHOICE` - Choice in school attendance
+`S19PBPV` - Public vs. private school classification (This is still missing)
+`S19TYPE` - School type on CCD/PSS (This is still missing)
+We will update the columns to try and update for the lost columns to maintain meaningful insights
+
+```{r}
+# Checking if all the columns are present in the dataset
+new_cols <- c("EDCPUB", "SCCHOICE", "S19PBPV", "S19TYPE",
+              "FSSPORTX", "FSMTNG", "FSPTMTNG", "FSATCNFN","FSSPHW",
+              "FHHOME","FHWKHRS","FHAMOUNT","FHCAMT","FHPLACE","FHCHECKX","FHHELP",
+              "FSCOMMTE", "FSCOUNSLR", "FSFREQ", "FHCHECKX", "FHHELP",
+              "SEGRADES", "SEENJOY", "SEABSNT", "ALLGRADEX", "FCSCHOOL", "FCTEACHR",
+              "FCSTDS", "FCORDER", "FCSUPPRT")
+org_cols <- colnames(pfi_2019)
+# Check if there are missing columns
+mis_cols <- setdiff(new_cols, org_cols)
+# Present columns
+pres_cols <- intersect(new_cols, org_cols)
+
+if (length(mis_cols) == 0){
+  message("All columns are present in the data set")
+}else {
+  message("the following columns are missing:\n", paste(mis_cols, collapse = "\n"))
+}
+fin_cols <- tibble(col_name = pres_cols)
+print(fin_cols)
+```
+```{r}
+print(pres_cols)
+```
+
+For our analysis we will be using the following variables
+`EDCPUB`- Attends a public school, `SCCHOICE` - Choice in school attendance (Indicates whether the student’s family actively chose the school, key for analyzing school choice impact), `FSSPORTX` - Attended a school event, `FSMTNG` - Attended a school meeting, `FSPTMTNG`- Attended a parent-teacher organization meeting, `FSATCNFN`- Attended a parent-teacher conference , `FSCOMMTE`- Served on a school committee , `FSCOUNSLR`- Met with a guidance counselor, `FSFREQ` - Frequency of participation in school meetings, `FHHOME`- Days spent doing homework, `FHWKHRS`- Hours spent doing homework, `FHAMOUNT`- Adult’s feelings about the amount of homework, `FHCAMT`- Child’s feelings about amount of homework , `FHPLACE` - Place at home to do homework , `FHCHECKX` - Parents check for homework completion, `FHHELP`- Days parents help with homework, `SEGRADES` - Child’s grades, `SEENJOY` - Child’s enjoyment of school , `SEABSNT`- Days absent, `ALLGRADEX` - Current grade level , `FCSCHOOL` - Satisfaction with school, `FCTEACHR`- Satisfaction with teachers, `FCSTDS` - Satisfaction with academic standards , `FCORDER` -  Satisfaction with discipline, `FCSUPPRT`- Satisfaction with school staff/parent interaction
+
+## Subset the initial data frame
+```{r}
+pfi_2019 %>%
+  dplyr::select(all_of(pres_cols)) -> pfi_fin
+pfi_fin
+
+```
+Let us check for missing values present in the subset
+```{r}
+colSums(is.na(pfi_fin))
+```
+
+There are no missing values in the dataset 
+
+```{r}
+glimpse(pfi_fin)
+```
+-1 is imputed as missing values from the codebook. So we will convert `-1` to `NA`
+```{r}
+null_cols <- pfi_fin %>%
+ dplyr::select(where(~ any(. == -1, na.rm = TRUE))) %>%
+  colnames()
+print(null_cols)
+```
+
+The counts for `-1`, this is a method used in the survey to show that the question was not asked because they were not eligible to answer the question, which does not necessarily indicate missing values. We will have to deal with it differently
+```{r}
+null_counts <- sapply(pfi_fin, function(x) sum(x==-1, na.rm = TRUE))
+null_counts <- null_counts[null_counts > 0]
+print(null_counts)
+```
+
+
+## Converting the Categorical variables into factors
+
+For our modelling the categorical values are stored as numbers and we need to convert them to factors to ensure proper analysis
+```{r}
+cat_cols <- c("EDCPUB", "SCCHOICE", "FSSPORTX", "FSMTNG", "FSPTMTNG", 
+              "FSATCNFN", "FSCOMMTE", "FSCOUNSLR", "FCSUPPRT", "FCORDER", 
+              "FCSTDS", "FHAMOUNT", "FHCAMT", "FHPLACE", "FHCHECKX", "FHHELP", 
+              "SEGRADES", "SEENJOY", "SEABSNT", "FCSCHOOL", "FCTEACHR")
+pfi_fin[cat_cols] <- pfi_fin[cat_cols] %>%
+  mutate_all(~ as.factor(.))
+```
+
+
+**Highlighting the columns with `-1` **
+```{r}
+neg1 <- pfi_fin %>%
+  dplyr:: select(where(~ any(. == -1, na.rm = TRUE))) %>%
+  colnames()
+print(neg1)
+```
+
+## Dropping missing values
+The proportion of columns with missing values is too small and might not have a huge impact on the model so we will drop the missing values for the categorical values
+
+```{r}
+pfi_fin <- pfi_fin %>%
+  filter(if_all(all_of(neg1), ~ . != -1)) %>%
+  mutate(across(all_of(cat_cols), ~ droplevels(.)))
+
+```
+
+We are going to also drop all the missing values (`-1`) in the numerical columns 
+```{r}
+num_cols <- c("FHHOME", "FHWKHRS", "FSFREQ", "ALLGRADEX")
+
+pfi_fin <- pfi_fin %>%
+  filter(!if_any(all_of(num_cols), ~ . == -1))
+
+```
+
+**Checking if we have any `-1` values left in the dataset**
+
+```{r}
+any(pfi_fin == -1 , na.rm = TRUE)
+```
+```{r}
+colSums(pfi_fin == -1, na.rm = TRUE)
+```
+All the missing values have been dropped from the dataset 
+
+## Visualizations
+**1. School choice by School Type**
+```{r}
+
+ggplot(pfi_fin, aes(x = SCCHOICE, fill = EDCPUB)) +
+  geom_bar(position = "dodge") +
+  labs(
+    title = "School Choice by School Type (Public/Private)",
+    x = "School Choice",
+    y = "Count",
+    fill = "School Type"
+  ) +
+  theme_minimal()
+```
+**2. School choice Vs Grade**
+```{r}
+ggplot(pfi_fin, aes(x= SCCHOICE, y=SEGRADES, fill = SCCHOICE))+
+  geom_boxplot() +
+  labs(title = "Grades by School Choice Status")
+```
+**3. Family Engagement **
+```{r}
+pfi_fin %>%
+  dplyr:: select(FSMTNG, FSPTMTNG, FSATCNFN) %>%
+  pivot_longer(everything()) %>%
+  ggplot(aes(x = value, fill = name)) +
+  geom_bar(position = "dodge") +
+  labs(title = "Frequency of Family Engagement Activities")
+```
+
+```{r message=FALSE}
+pfi_fin %>% 
+  dplyr:: select(SEGRADES, FHHOME,FHWKHRS, FSFREQ,ALLGRADEX) %>%
+ggpairs
+```
+
+
+**Start modelling**
+```{r}
+glimpse(pfi_fin)
+```
+## 1. Analyzing factors that influence School Choice
+**We will useMultinomial Logistic Regression**
+
+This will help understand what are the most important factors that significantly improve parent's decision for a school choice
+
+## Backward and Forward Selection
+We will use backward and forward selection to understand the variable importance in this model and know which are the best predictors to use in the model
+
+```{r}
+print(levels(pfi_fin$SCCHOICE))
+
+# Make a copy of the dataset with proper factor levels
+pfi_fin_fixed <- pfi_fin
+
+pfi_fin_fixed$SCCHOICE <- factor(pfi_fin_fixed$SCCHOICE)
+levels(pfi_fin_fixed$SCCHOICE) <- make.names(levels(pfi_fin_fixed$SCCHOICE))
+print(levels(pfi_fin_fixed$SCCHOICE))
+
+evaluate_model <- function(model, data) {
+  predicted_probs <- predict(model, newdata = data, type = "probs")
+  predicted_class <- predict(model, newdata = data, type = "class")
+  
+  accuracy <- mean(predicted_class == data$SCCHOICE)
+  
+  aic <- AIC(model)
+  bic <- BIC(model)
+  
+  # Return metrics
+  return(list(
+    model = model,
+    formula = formula(model),
+    accuracy = accuracy,
+    aic = aic,
+    bic = bic
+  ))
+}
+
+# Split data into training and testing sets (80/20 split)
+set.seed(2025) 
+train_index <- createDataPartition(pfi_fin_fixed$SCCHOICE, p = 0.8, list = FALSE)
+train_data <- pfi_fin_fixed[train_index, ]
+test_data <- pfi_fin_fixed[-train_index, ]
+
+#Forward Selection
+start_model <- multinom(SCCHOICE ~ 1, data = train_data, trace = FALSE)
+forward_model <- stepAIC(start_model, 
+                         scope = list(upper = ~ FSMTNG + FSPTMTNG + FSATCNFN + ALLGRADEX + FCSCHOOL + FCTEACHR + FHHOME + FHWKHRS),
+                         direction = "forward",
+                         trace = TRUE)
+
+# Backward Selection
+full_model <- multinom(SCCHOICE ~ FSMTNG + FSPTMTNG + FSATCNFN + ALLGRADEX + FCSCHOOL + FCTEACHR + FHHOME + FHWKHRS, 
+                       data = train_data, trace = FALSE)
+backward_model <- stepAIC(full_model, 
+                          direction = "backward",
+                          trace = TRUE)
+
+# Bidirectional Selection
+both_model <- stepAIC(start_model, 
+                     scope = list(upper = ~ FSMTNG + FSPTMTNG + FSATCNFN + ALLGRADEX + FCSCHOOL + FCTEACHR + FHHOME + FHWKHRS),
+                     direction = "both",
+                     trace = TRUE)
+
+# Cross-Validation for the three selected models and the full model
+models_to_evaluate <- list(
+  forward = forward_model,
+  backward = backward_model,
+  both = both_model,
+  full = full_model
+)
+
+# Function to perform manual cross-validation
+manual_cv <- function(model_formula, data, k = 5) {
+  set.seed(123)
+  folds <- createFolds(data$SCCHOICE, k = k)
+  cv_accuracy <- numeric(k)
+  
+  for (i in 1:k) {
+    # Split data
+    train_fold <- data[-folds[[i]], ]
+    test_fold <- data[folds[[i]], ]
+    
+    # Fit model
+    fold_model <- multinom(model_formula, data = train_fold, trace = FALSE)
+    
+    # Predict
+    predictions <- predict(fold_model, newdata = test_fold)
+    
+    # Calculate accuracy
+    cv_accuracy[i] <- mean(predictions == test_fold$SCCHOICE)
+  }
+  
+  return(mean(cv_accuracy))
+}
+
+# Evaluate each model
+cv_results <- list()
+test_results <- list()
+
+for (name in names(models_to_evaluate)) {
+  model <- models_to_evaluate[[name]]
+  
+  cv_accuracy <- manual_cv(formula(model), train_data)
+  cv_results[[name]] <- list(accuracy = cv_accuracy)
+  
+  test_results[[name]] <- evaluate_model(model, test_data)
+}
+
+# Creating a comparison table
+comparison_table <- data.frame(
+  Model = names(test_results),
+  Accuracy = sapply(test_results, function(x) x$accuracy),
+  AIC = sapply(test_results, function(x) x$aic),
+  BIC = sapply(test_results, function(x) x$bic),
+  CV_Accuracy = sapply(cv_results, function(x) x$accuracy),
+  Variables = sapply(test_results, function(x) length(all.vars(x$formula)) - 1)
+)
+
+# Order by AIC (lower is better)
+comparison_table <- comparison_table[order(comparison_table$AIC), ]
+
+# Print the comparison table
+print(comparison_table)
+
+# Identify the best model
+best_model_name <- comparison_table$Model[1]
+best_model <- models_to_evaluate[[best_model_name]]
+
+calculate_importance <- function(model) {
+  model_summary <- summary(model)
+  z_values <- model_summary$coefficients / model_summary$standard.errors
+  
+  cat("Structure of z_values:\n")
+  print(str(z_values))
+  
+  var_names <- colnames(z_values)
+  
+  # If z_values is a matrix
+  if (is.matrix(z_values)) {
+    # Calculate mean absolute z-value for each variable
+    importance <- colMeans(abs(z_values), na.rm = TRUE)
+  } else if (is.numeric(z_values)) {
+    importance <- abs(z_values)
+    names(importance) <- var_names
+  } else {
+    cat("Cannot calculate variable importance - unexpected structure\n")
+    return(NULL)
+  }
+  
+  return(importance)
+}
+
+var_importance <- calculate_importance(best_model)
+
+# If we have importance values, plot them
+if (!is.null(var_importance)) {
+  # Sort importance
+  var_importance <- sort(var_importance, decreasing = TRUE)
+  
+  cat("\nVariable Importance (based on absolute Z-scores):\n")
+  print(var_importance)
+  
+  par(mar = c(5, 10, 4, 2))
+  barplot(var_importance, 
+          main = paste("Variable Importance for", best_model_name, "Model"),
+          horiz = TRUE, 
+          col = "skyblue",
+          las = 1,
+          xlim = c(0, max(var_importance) * 1.2))
+}
+
+cat("\nBest Model Selected:", best_model_name, "\n")
+cat("Formula:", deparse(formula(best_model)), "\n")
+cat("AIC:", AIC(best_model), "\n")
+cat("Test Accuracy:", test_results[[best_model_name]]$accuracy, "\n")
+cat("Cross-Validation Accuracy:", cv_results[[best_model_name]]$accuracy, "\n\n")
+
+# Get p-values for the best model
+best_summary <- summary(best_model)
+z_values <- best_summary$coefficients / best_summary$standard.errors
+p_values <- (1 - pnorm(abs(z_values), 0, 1)) * 2
+
+cat("Significant predictors (p < 0.05):\n")
+
+# Handle both matrix and vector cases for p_values
+if (is.matrix(p_values)) {
+  sig_predictors <- which(p_values < 0.05, arr.ind = TRUE)
+  if (length(sig_predictors) > 0) {
+    for (i in 1:nrow(sig_predictors)) {
+      row_idx <- sig_predictors[i, 1]
+      col_idx <- sig_predictors[i, 2]
+      row_name <- rownames(p_values)[row_idx]
+      col_name <- colnames(p_values)[col_idx]
+      p_val <- p_values[row_idx, col_idx]
+      cat(row_name, "-", col_name, ": p =", p_val, "\n")
+    }
+  } else {
+    cat("No significant predictors found at p < 0.05\n")
+  }
+} else if (is.numeric(p_values)) {
+  sig_idx <- which(p_values < 0.05)
+  if (length(sig_idx) > 0) {
+    for (i in sig_idx) {
+      cat(names(p_values)[i], ": p =", p_values[i], "\n")
+    }
+  } else {
+    cat("No significant predictors found at p < 0.05\n")
+  }
+} else {
+  cat("Cannot determine significant predictors - unexpected structure\n")
+}
+
+if (requireNamespace("broom", quietly = TRUE)) {
+  best_model_tidy <- broom::tidy(best_model)
+  print(best_model_tidy)
+} else {
+  cat("Package 'broom' not available for tidy output.\n")
+}
+```
+
+**1. Coefficient estimate plot **
+```{r}
+
+coef_df <- tidy(best_model)
+
+coef_df$significant <- ifelse(coef_df$p.value < 0.05, "Yes", "No")
+
+ggplot(coef_df, aes(x = term, y = estimate, color = significant)) +
+  geom_point() +
+  geom_errorbar(aes(ymin = estimate - std.error, 
+                    ymax = estimate + std.error), width = 0.2) +
+  facet_wrap(~y.level) +  # Split by outcome level
+  coord_flip() +
+  labs(title = "Coefficient Estimates with Standard Errors",
+       x = "Predictor",
+       y = "Coefficient Estimate") +
+  theme_minimal() +
+  scale_color_manual(values = c("Yes" = "red", "No" = "gray"))
+```
+**school type** (`FCSCHOOL2`, `FCSCHOOL3`, `FCSCHOOL4`) is a strong predictor of school choice, with higher coefficients suggesting a greater likelihood of selecting a particular school option. **Academic performance** (`ALLGRADEX`) and family homework support (`FHHOME`) show significant negative associations, indicating that students with higher grades and greater family involvement in homework are less likely to choose this school category.
+**Parental engagement variables** (`FSPTMTNG2`, `FSMTNG2`, `FSATCNFN2`) are not statistically significant, suggesting that attending meetings or being satisfied with school conferences does not directly impact school choice decisions.
+
+This shows the importance of school characteristics and academic perfomance in influencing enrollment decisions
+
+**2. Cross Validation Accuracy **
+
+```{r}
+# Plot cross-validation performance
+cv_df <- data.frame(
+  Model = names(cv_results),
+  Accuracy = sapply(cv_results, function(x) x$accuracy)
+)
+
+ggplot(cv_df, aes(x = reorder(Model, -Accuracy), y = Accuracy)) +
+  geom_bar(stat = "identity", fill = "lightgreen") +
+  geom_text(aes(label = round(Accuracy, 3)), vjust = -0.5) +
+  labs(title = "Cross-Validation Accuracy", 
+       x = "Model Type", 
+       y = "Mean CV Accuracy") +
+  theme_minimal() +
+  ylim(0, max(cv_df$Accuracy) * 1.1)
+```
+
+
+We can see that the forward and backward selection have an accuracy of 0.6621481 and they have the same AIC. For our final model we will use 6 predictors 
+
+## Final Model
+
+```{r}
+multi_mod <- multinom(SCCHOICE ~ FCSCHOOL + ALLGRADEX + FHHOME + FSATCNFN + FSMTNG + FSPTMTNG, data= pfi_fin)
+
+#mod_summary <-summary(multi_mod)
+tidy(multi_mod)
+```
+
+
+## Confidence Intervals
+
+```{r}
+tidy(multi_mod, conf.int = TRUE)
+```
+
+**1.School Type Matters** – Attending a specific type of school (`FCSCHOOL2`, `FCSCHOOL3`, `FCSCHOOL4`) significantly increases the likelihood of school choice selection compared to the reference school category. The strongest association is observed for `FCSCHOOL4`, followed by `FCSCHOOL3` and `FCSCHOOL2`.
+
+**2. Academic Performance and Family Homework Support Reduce Likelihood** – Higher overall grades (`ALLGRADEX`) and greater family involvement in homework (`FHHOME`) are associated with a lower probability of selecting a particular school choice. This may indicate that students with strong academic performance and supportive home environments feel less need to change schools.
+
+**3. Parental Engagement Influences School Choice** – Parents who attend school-related meetings (`FSMTNG2`) and parent-teacher conferences (`FSATCNFN2`) are more likely to opt for a particular school choice. This suggests that engaged parents are more proactive in making school decisions for their children.
+
+**4. Parent-Teacher Meetings (`FSPTMTNG2`) Are Not Significant** – Unlike other forms of parental engagement, attending parent-teacher meetings does not significantly influence school choice selection. This could mean that other school engagement activities are more impactful in shaping decisions.
+
+
+## 2. School Choice and family Engagement
+**Multinomial Regression **
+
+```{r}
+table(pfi_fin$SEGRADES) 
+```
+
+```{r}
+# Make sure SEGRADES is a factor (not ordered)
+pfi_fin$SEGRADES <- factor(pfi_fin$SEGRADES, ordered = FALSE)
+
+# Verify we have multiple levels
+print(levels(pfi_fin$SEGRADES))
+
+# Define model formula
+model_formula <- SEGRADES ~ SCCHOICE + FHHOME + FHWKHRS + FHHELP + 
+                 FSMTNG + FSPTMTNG + FSATCNFN + EDCPUB
+
+# Fit the model
+grades_multi_model <- multinom(model_formula, data = pfi_fin, maxit = 500)
+```
+
+## Forward and Backward Selection for Multinomial Regression
+**Backward Selection**
+```{r}
+full_model <- multinom(SEGRADES ~ SCCHOICE + FHHOME + FHWKHRS + FHHELP + 
+                      FSMTNG + FSPTMTNG + FSATCNFN + EDCPUB, 
+                      data = pfi_fin, maxit = 500, trace = FALSE)
+
+backward_model <- stepAIC(full_model, direction = "backward", trace = TRUE)
+
+cat("\n\nBACKWARD SELECTION FINAL MODEL:\n")
+summary(backward_model)
+
+z_back <- summary(backward_model)$coefficients / summary(backward_model)$standard.errors
+p_back <- (1 - pnorm(abs(z_back))) * 2
+cat("\nP-values for backward selection model:\n")
+print(p_back)
+```
+
+**Forward Selection **
+```{r}
+null_model <- multinom(SEGRADES ~ 1, data = pfi_fin, maxit = 500, trace = FALSE)
+
+forward_scope <- list(
+  lower = formula(null_model),
+  upper = formula(full_model)
+)
+
+# Perform forward selection
+forward_model <- stepAIC(null_model, direction = "forward", 
+                        scope = forward_scope, trace = TRUE)
+
+cat("\n\nFORWARD SELECTION FINAL MODEL:\n")
+summary(forward_model)
+
+z_forward <- summary(forward_model)$coefficients / summary(forward_model)$standard.errors
+p_forward <- (1 - pnorm(abs(z_forward))) * 2
+cat("\nP-values for forward selection model:\n")
+print(p_forward)
+
+```
+
+**StepWise Implementation **
+```{r}
+stepwise_model <- stepAIC(null_model, direction = "both", 
+                         scope = forward_scope, trace = TRUE)
+
+cat("\n\nSTEPWISE SELECTION FINAL MODEL:\n")
+summary(stepwise_model)
+
+z_step <- summary(stepwise_model)$coefficients / summary(stepwise_model)$standard.errors
+p_step <- (1 - pnorm(abs(z_step))) * 2
+cat("\nP-values for stepwise selection model:\n")
+print(p_step)
+```
+
+
+**Model Comparison**
+```{r}
+model_comparison <- data.frame(
+  Model = c("Null", "Forward", "Backward", "Stepwise", "Full"),
+  LogLik = c(
+    as.numeric(logLik(null_model)),
+    as.numeric(logLik(forward_model)),
+    as.numeric(logLik(backward_model)),
+    as.numeric(logLik(stepwise_model)),
+    as.numeric(logLik(full_model))
+  ),
+  AIC = c(
+    AIC(null_model),
+    AIC(forward_model),
+    AIC(backward_model),
+    AIC(stepwise_model),
+    AIC(full_model)
+  ),
+  BIC = c(
+    BIC(null_model),
+    BIC(forward_model),
+    BIC(backward_model),
+    BIC(stepwise_model),
+    BIC(full_model)
+  ),
+  Parameters = c(
+    length(coef(null_model)),
+    length(coef(forward_model)),
+    length(coef(backward_model)),
+    length(coef(stepwise_model)),
+    length(coef(full_model))
+  )
+)
+
+cat("\n\nMODEL COMPARISON:\n")
+print(model_comparison)
+```
+
+## Identify the best predictors to use in the model
+```{r}
+get_important_predictors <- function(model, alpha = 0.05) {
+  z_vals <- summary(model)$coefficients / summary(model)$standard.errors
+  p_vals <- (1 - pnorm(abs(z_vals))) * 2
+  
+  # Find significant predictors for each outcome level
+  sig_predictors <- list()
+  
+  for (i in 1:nrow(p_vals)) {
+    level <- rownames(p_vals)[i]
+    sig_vars <- colnames(p_vals)[p_vals[i,] < alpha]
+    sig_vars <- sig_vars[sig_vars != "(Intercept)"] 
+    
+    if (length(sig_vars) > 0) {
+      sig_predictors[[level]] <- sig_vars
+    }
+  }
+  
+  return(sig_predictors)
+}
+
+
+cat("\nForward Selection Model:\n")
+print(get_important_predictors(forward_model))
+
+cat("\nBackward Selection Model:\n")
+print(get_important_predictors(backward_model))
+
+cat("\nStepwise Selection Model:\n")
+print(get_important_predictors(stepwise_model))
+```
+
+*
+**Visualizing the model perfomance results**
+```{r}
+
+variable_importance <- function(model) {
+  z_vals <- abs(summary(model)$coefficients / summary(model)$standard.errors)
+  
+  # Average z-value across outcome levels for each predictor
+  avg_importance <- apply(z_vals, 2, mean)
+  
+  # Convert to data frame
+  var_imp <- data.frame(
+    Variable = names(avg_importance),
+    Importance = as.numeric(avg_importance)
+  )
+
+  var_imp <- var_imp[order(-var_imp$Importance), ]
+  
+  return(var_imp)
+}
+
+var_imp <- variable_importance(backward_model)
+
+if (require(ggplot2)) {
+  # Remove intercept
+  var_imp <- var_imp[var_imp$Variable != "(Intercept)", ]
+  
+  importance_plot <- ggplot(var_imp, aes(x = reorder(Variable, Importance), y = Importance)) +
+    geom_bar(stat = "identity", fill = "steelblue") +
+    coord_flip() +
+    labs(title = "Variable Importance in Predicting Student Grades",
+         subtitle = "Based on absolute z-values from multinomial logistic regression",
+         x = "Predictor Variables",
+         y = "Importance (Average |z-value|)") +
+    theme_minimal()
+  
+  print(importance_plot)
+
+}
+
+```
+
+
+**Best Model for Analysis**
+
+```{r}
+cat("\n\nRECOMMENDATIONS BASED ON MODEL SELECTION:\n")
+cat("1. Most important predictors across all models:\n")
+print(head(var_imp, 5))
+
+best_model_index <- which.min(model_comparison$AIC)
+best_model_name <- model_comparison$Model[best_model_index]
+
+cat("\n2. The best model based on AIC is the", best_model_name, "model\n")
+
+# Return the best model for further analysis
+best_model <- switch(best_model_name,
+                    "Null" = null_model,
+                    "Forward" = forward_model,
+                    "Backward" = backward_model,
+                    "Stepwise" = stepwise_model,
+                    "Full" = full_model)
+
+cat("\n3. Final formula for best model:\n")
+print(formula(best_model))
+
+best_model
+```
+## Final Model
+
+```{r}
+fin_model <- multinom(SEGRADES ~ FHWKHRS + FHHELP + FHHOME + FSATCNFN + FSMTNG + EDCPUB + SCCHOICE, data = pfi_fin)
+tidy(fin_model)
+```
+
+## Confidence intervals
+
+```{r}
+tidy(fin_model, conf.int = TRUE)
+```
+## Predictions
+```{r}
+set.seed(2025) 
+train_indices <- sample(1:nrow(pfi_fin), 0.7 * nrow(pfi_fin))  
+train_data <- pfi_fin[train_indices, ]
+test_data <- pfi_fin[-train_indices, ]
+
+# Refit the model on training data
+train_model <- multinom(SEGRADES ~ FHWKHRS + FHHELP + FHHOME + FSATCNFN + FSMTNG + EDCPUB + SCCHOICE, 
+                       data = train_data, maxit = 500, trace = FALSE)
+
+# Get predicted classes
+predicted_classes <- predict(train_model, newdata = test_data, type = "class")
+
+# Get predicted probabilities
+predicted_probs <- predict(train_model, newdata = test_data, type = "probs")
+
+conf_matrix <- confusionMatrix(predicted_classes, test_data$SEGRADES)
+
+overall_accuracy <- conf_matrix$overall["Accuracy"]
+print(paste("Overall Accuracy:", round(overall_accuracy * 100, 2), "%"))
+
+```
+
+## Cross Validation
+```{r}
+cv_accuracy <- function(data, formula, k = 5) {
+  set.seed(2025)
+  folds <- createFolds(data$SEGRADES, k = k)
+  accuracy <- numeric(k)
+  
+  for (i in 1:k) {
+    train <- data[-folds[[i]], ]
+    test <- data[folds[[i]], ]
+    
+    model <- multinom(formula, data = train, maxit = 500, trace = FALSE)
+    pred <- predict(model, newdata = test, type = "class")
+      accuracy[i] <- mean(pred == test$SEGRADES)
+  }
+  
+  return(list(fold_accuracy = accuracy, mean_accuracy = mean(accuracy)))
+}
+cv_results <- cv_accuracy(pfi_fin, SEGRADES ~ FHWKHRS + FHHELP + FHHOME + FSATCNFN + FSMTNG + EDCPUB + SCCHOICE, k = 5)
+
+print("Cross-validation results:")
+print(paste("Fold accuracies:", paste(round(cv_results$fold_accuracy * 100, 2), collapse = "%, "), "%"))
+print(paste("Mean CV Accuracy:", round(cv_results$mean_accuracy * 100, 2), "%"))
+```
+There is consistent perfomance in accuracy through the various folds
+
+
+
+
